@@ -26,4 +26,11 @@ _testmain.go
 # cfs binary
 /server/server
 /server/cfs0000
+<<<<<<< HEAD
 /ctl/ctl
+=======
+/cfsctl/cfsctl
+
+# temporary build path
+/proto/gopath
+>>>>>>> e49b113c8546c77da69775928737fe6c99b8abc5

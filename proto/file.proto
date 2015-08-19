@@ -1,0 +1,169 @@
+syntax = "proto3";
+
+package proto;
+
+service cfs {
+    rpc Write(WriteRequest) returns (WriteReply);
+    rpc Read(ReadRequest) returns (ReadReply);
+    rpc Rename(RenameRequest) returns (RenameReply);
+    rpc Remove(RemoveRequest) returns (RemoveReply);
+    rpc ReadDir(ReadDirRequest) returns (ReadDirReply);
+    rpc Mkdir(MkdirRequest) returns (MkdirReply);
+}
+
+
+message requestHeader {
+   int64 clientID = 1;
+}
+
+// PathError records an error and the operation and file path that caused it.
+message PathError {
+    string op = 1;
+    string path = 2;
+    string error = 3;
+}
+
+// SyscallError records an error from a specific system call.
+message SyscallError {
+    string syscall = 1;
+    string error = 2;
+}
+
+message Error {
+    oneof error {
+        PathError pathErr = 1;
+        SyscallError sysErr = 2;
+    }
+}
+
+message FileInfo {
+    string name = 1;
+    int64 size = 2;
+    // including block header(CRC), padding zero bytes
+    int64 total_size = 3;
+    int64 mod_time = 4;
+    bool is_dir = 5;
+}
+
+// Write writes len(b) bytes from the given offset. It returns the number
+// of bytes written and an error, if any.
+// Write returns an error when n != len(b).
+message WriteRequest {
+    requestHeader header = 1;
+    string name = 2;
+    int64 offset = 3;
+    bytes data = 4;
+
+    bool append = 5;
+}
+
+message WriteReply {
+    Error error = 1;
+    int64 bytes_written = 2;
+}
+
+// Read reads up to length bytes. The checksum of the data must match the exp_checksum if given, or an error is returned.
+message ReadRequest {
+    requestHeader header = 1;
+    string name = 2;
+    int64 offset = 3;
+    int64 length = 4;
+    fixed32 exp_checksum = 5;
+}
+
+message ReadReply {
+    Error error = 1;
+    int64 bytes_read = 2;
+    bytes data = 3;
+    fixed32 checksum = 4;
+}
+
+message RenameRequest {
+    requestHeader header = 1;
+    string oldname = 2;
+    string newname = 3;
+}
+
+message RenameReply {
+    Error error = 1;
+}
+
+message ReadDirRequest {
+    requestHeader header = 1;
+    string name = 2;
+}
+
+message ReadDirReply {
+    Error error = 1;
+    repeated FileInfo fileInfos = 2;
+}
+
+// Remove removes the named file or directory. If there is an error, it will be of type *PathError.
+message RemoveRequest {
+    requestHeader header = 1;
+    string name = 2;
+    // All removes path and any children it contains. It removes everything it can but returns the first error it 
+    // encounters. If the path does not exist, RemoveAll returns nil (no error).
+    bool all = 3;
+}
+
+message RemoveReply {
+    Error error = 1;
+}
+
+// Mkdir creates a new directory with the specified name. If all is set, Mkdir creates a directory named path,
+// along with any necessary parents. If path is already a directory, Mkdir does nothing.
+message MkdirRequest {
+    requestHeader header = 1;
+    string name = 2;
+    bool all = 3;
+}
+
+message MkdirReply {
+    Error error = 1;
+}
+
+message ReconstructSrc {
+    requestHeader header = 1;
+    string remote = 2;          // remote server (10.10.0.1:15524)
+    string name = 3;
+}
+
+message ReconstructDst {
+    requestHeader header = 1;
+    // The destination should always be local server.
+    string name = 2;
+}
+
+// http://web.eecs.utk.edu/~plank/plank/papers/2013-02-11-FAST-Tutorial.pdf
+// https://www.usenix.org/legacy/events/fast09/tech/full_papers/plank/plank_html/
+// Optimized for Cauchy Reed-Solomon (CRS) Codes, but should also be applied to 
+// RAID5 and RAID6
+message ReconstructRequest {
+    requestHeader header = 1;
+    repeated ReconstructSrc srcs = 2;
+    repeated ReconstructDst dsts = 3;
+
+    // each src has multiple strips. the length of src must be
+    // a multiply of stripe_size or it should be zero filled.
+    //
+    // a strip (also called block) is partitioned into w packets
+    // Invariant: strip_size = packet_size * w
+    // w MUST be in the range [1, 32]
+    //
+    // https://www.usenix.org/legacy/events/fast09/tech/full_papers/plank/plank_html Section 2.2
+    int32 strip_size = 4;
+    int32 packet_size = 5;
+    int32 w = 6;
+
+    // wk * wn matrix of bits
+    // k is the number of sources, n is the number of dests.
+    // bit_matrix[i][j] = i * k * w + j
+    // TODO: make this a dense bytes array and each bytes contains
+    // 8 bits.
+    repeated int32 bit_matrix = 7;
+}
+
+message ReconstructReply {
+    Error error = 1;
+}
